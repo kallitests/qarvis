@@ -1,0 +1,31 @@
+[project]
+name = "qarvis-ai-brain"
+version = "0.1.0"
+description = "QARVIS - Univers IA (agents LangGraph, triage, RAG, evals)"
+requires-python = ">=3.12"
+dependencies = [
+    "langchain>=1.0",
+    "langgraph",
+    "langsmith",
+    "psycopg[binary]",
+    "pgvector",
+]
+
+[project.optional-dependencies]
+dev = [
+    "ruff",
+    "mypy",
+    "pre-commit",
+    "pytest",
+]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP"]
+
+[tool.mypy]
+python_version = "3.12"
+strict = true

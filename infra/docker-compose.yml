@@ -1,0 +1,42 @@
+version: "3.9"
+
+# QARVIS POC - orchestration locale : app cible (Cypress RWA) + Postgres/pgvector (RAG)
+# Les runners Playwright tournent côté CI (GitHub Actions), pas ici, pour rester proche
+# de la prod : "les runs restent dans la CI du client".
+
+services:
+  rwa:
+    build:
+      context: ./docker
+      dockerfile: Dockerfile.rwa
+    image: qarvis/cypress-rwa:local
+    ports:
+      - "3000:3000" # front React
+      - "3001:3001" # API Express
+    environment:
+      NODE_ENV: development
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:3000"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  postgres:
+    image: pgvector/pgvector:pg16
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: qarvis
+      POSTGRES_PASSWORD: qarvis
+      POSTGRES_DB: qarvis_rag
+    ports:
+      - "5432:5432"
+    volumes:
+      - qarvis_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U qarvis"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  qarvis_pgdata:

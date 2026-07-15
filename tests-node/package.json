@@ -1,0 +1,34 @@
+{
+  "name": "qarvis-tests-node",
+  "version": "0.1.0",
+  "private": true,
+  "description": "QARVIS - Univers Test (Playwright + TypeScript + BDD) contre Cypress Real World App",
+  "type": "module",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "bddgen": "bddgen",
+    "pretest": "npm run bddgen",
+    "test": "playwright test",
+    "test:smoke": "npm run bddgen && playwright test --grep @smoke",
+    "test:e2e": "npm run bddgen && playwright test tests/e2e",
+    "test:api": "playwright test tests/api",
+    "test:ui": "playwright test --ui",
+    "report:merge": "playwright merge-reports --reporter html ./blob-report",
+    "lint": "eslint . --ext .ts",
+    "format": "prettier --check .",
+    "format:fix": "prettier --write .",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.48.0",
+    "@typescript-eslint/eslint-plugin": "^8.0.0",
+    "@typescript-eslint/parser": "^8.0.0",
+    "eslint": "^9.0.0",
+    "mochawesome": "^7.1.3",
+    "playwright-bdd": "^7.0.0",
+    "prettier": "^3.3.0",
+    "typescript": "^5.6.0"
+  }
+}

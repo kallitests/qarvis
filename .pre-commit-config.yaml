@@ -1,0 +1,33 @@
+repos:
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v4.6.0
+    hooks:
+      - id: trailing-whitespace
+      - id: end-of-file-fixer
+      - id: check-yaml
+      - id: check-added-large-files
+
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.6.9
+    hooks:
+      - id: ruff
+        args: [--fix]
+        files: ^ai-brain/
+      - id: ruff-format
+        files: ^ai-brain/
+
+  - repo: local
+    hooks:
+      - id: eslint-tests-node
+        name: ESLint (tests-node)
+        entry: bash -c 'cd tests-node && npm run lint'
+        language: system
+        files: ^tests-node/.*\.ts$
+        pass_filenames: false
+
+      - id: prettier-tests-node
+        name: Prettier check (tests-node)
+        entry: bash -c 'cd tests-node && npm run format'
+        language: system
+        files: ^tests-node/.*\.(ts|json)$
+        pass_filenames: false

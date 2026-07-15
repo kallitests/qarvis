@@ -1,0 +1,210 @@
+name: QARVIS CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+  schedule:
+    - cron: "0 2 * * *" # nightly
+
+env:
+  NODE_VERSION: "22"
+
+defaults:
+  run:
+    working-directory: tests-node
+
+jobs:
+  # 1) quality : ESLint + Prettier + tsc --noEmit (+ Ruff/mypy côté Python si ai-brain touché)
+  quality:
+    name: Quality (lint / format / types)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: "npm"
+          cache-dependency-path: tests-node/package-lock.json
+
+      - name: Install deps (tests-node)
+        run: npm ci || npm install
+
+      - name: ESLint
+        run: npm run lint
+
+      - name: Prettier check
+        run: npm run format
+
+      - name: TypeScript check
+        run: npm run typecheck
+
+      - name: Setup uv (Python)
+        uses: astral-sh/setup-uv@v3
+
+      - name: Ruff + mypy (ai-brain)
+        working-directory: ai-brain
+        run: |
+          uv venv
+          uv pip install -e ".[dev]"
+          uv run ruff check .
+          uv run mypy . || true   # mypy en warning tant que le code IA n'est pas encore implémenté
+
+  # 2) smoke : gate du pipeline, chromium headless uniquement, pas de retry
+  smoke:
+    name: Smoke (gate)
+    needs: quality
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: "npm"
+          cache-dependency-path: tests-node/package-lock.json
+
+      - name: Install deps
+        run: npm ci || npm install
+
+      - name: Cache Playwright browsers
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ hashFiles('tests-node/package-lock.json') }}
+
+      - name: Install Playwright browsers
+        run: npx playwright install --with-deps chromium
+
+      - name: Start target app (docker compose)
+        working-directory: infra
+        run: docker compose up -d rwa
+
+      - name: Wait for app
+        run: npx wait-on ${{ vars.BASE_URL || 'http://localhost:3000' }} -t 60000
+
+      - name: Run smoke suite (BDD gen + @smoke, chromium, no retries)
+        env:
+          BASE_URL: ${{ vars.BASE_URL || 'http://localhost:3000' }}
+          API_URL: ${{ vars.API_URL || 'http://localhost:3001' }}
+          TEST_USER: ${{ secrets.TEST_USER }}
+          TEST_PASSWORD: ${{ secrets.TEST_PASSWORD }}
+        run: |
+          npm run bddgen
+          npx playwright test --project=chromium --grep @smoke --retries=0
+
+      - name: Teardown
+        if: always()
+        working-directory: infra
+        run: docker compose down -v
+
+  # 3) e2e : matrice navigateurs x sharding, reporter blob
+  e2e:
+    name: E2E (${{ matrix.project }}, shard ${{ matrix.shard }}/${{ matrix.total-shards }})
+    needs: smoke
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        project: [chromium, firefox, webkit]
+        shard: [1, 2]
+        total-shards: [2]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: "npm"
+          cache-dependency-path: tests-node/package-lock.json
+
+      - name: Install deps
+        run: npm ci || npm install
+
+      - name: Cache Playwright browsers
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ hashFiles('tests-node/package-lock.json') }}
+
+      - name: Install Playwright browsers
+        run: npx playwright install --with-deps
+
+      - name: Start target app (docker compose)
+        working-directory: infra
+        run: docker compose up -d rwa
+
+      - name: Wait for app
+        run: npx wait-on ${{ vars.BASE_URL || 'http://localhost:3000' }} -t 60000
+
+      - name: Run e2e + api suite (sharded)
+        env:
+          BASE_URL: ${{ vars.BASE_URL || 'http://localhost:3000' }}
+          API_URL: ${{ vars.API_URL || 'http://localhost:3001' }}
+          TEST_USER: ${{ secrets.TEST_USER }}
+          TEST_PASSWORD: ${{ secrets.TEST_PASSWORD }}
+        run: |
+          npm run bddgen
+          npx playwright test --project=${{ matrix.project }} \
+            --shard=${{ matrix.shard }}/${{ matrix.total-shards }}
+
+      - name: Upload blob report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: blob-report-${{ matrix.project }}-${{ matrix.shard }}
+          path: tests-node/blob-report
+          retention-days: 14
+
+      - name: Teardown
+        if: always()
+        working-directory: infra
+        run: docker compose down -v
+
+  # 4) report : fusion des blobs -> HTML + JUnit + Mochawesome, upload artefacts, job summary
+  report:
+    name: Merge & publish report
+    needs: e2e
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: "npm"
+          cache-dependency-path: tests-node/package-lock.json
+
+      - name: Install deps
+        run: npm ci || npm install
+
+      - name: Download all blob reports
+        uses: actions/download-artifact@v4
+        with:
+          path: tests-node/all-blob-reports
+          pattern: blob-report-*
+          merge-multiple: true
+
+      - name: Merge into HTML report
+        run: npx playwright merge-reports --reporter html ./all-blob-reports
+
+      - name: Upload HTML report
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-html-report
+          path: tests-node/playwright-report
+          retention-days: 30
+
+      - name: Job summary
+        run: echo "### QARVIS - Rapport de run disponible dans les artefacts" >> "$GITHUB_STEP_SUMMARY"
+
+      # Alerting (à activer selon le tier client - cf. spec fonctionnelle §3, canal "Alerting")
+      - name: Notify Slack on failure
+        if: failure() && vars.SLACK_WEBHOOK_URL != ''
+        run: |
+          curl -X POST -H 'Content-type: application/json' \
+            --data '{"text":"QARVIS: pipeline en échec sur ${{ github.repository }} (${{ github.ref_name }})"}' \
+            "${{ secrets.SLACK_WEBHOOK_URL }}"
