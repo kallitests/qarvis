@@ -1,0 +1,49 @@
+# Lot de cas pour juger la qualité sur ~10 exemples d'un coup.
+#   python generate_gherkin.py --cases cases.example.yaml
+#
+# Champs :
+#   id            : nom du fichier .feature généré
+#   url           : page réellement analysée (c'est elle qui ancre la génération)
+#   story         : la user story, telle qu'elle serait dans Jira
+#   storage_state : (option) fichier de session pour les pages authentifiées
+
+- id: login_saucedemo
+  url: https://www.saucedemo.com
+  story: |
+    En tant que client de Swag Labs,
+    je veux me connecter avec mon identifiant et mon mot de passe,
+    afin d'accéder au catalogue de produits.
+
+    Critères d'acceptation :
+    - un identifiant et un mot de passe valides mènent à la liste des produits
+    - un compte bloqué affiche un message d'erreur explicite
+
+# Astuce : mets volontairement une story VAGUE dans le lot.
+# C'est le meilleur test de robustesse — tu verras si le modèle invente ou s'il TODO.
+- id: story_vague
+  url: https://www.saucedemo.com
+  story: |
+    En tant qu'utilisateur, je veux pouvoir me connecter.
+
+# Astuce : et une story qui parle de choses ABSENTES de la page.
+# Le modèle doit les mettre en TODO, pas les inventer.
+- id: story_hors_perimetre
+  url: https://www.saucedemo.com
+  story: |
+    En tant que client, je veux réinitialiser mon mot de passe par e-mail
+    et recevoir un lien de confirmation valable 24 heures.
+
+# Exemples supplémentaires à activer une fois la Real World App lancée en local
+# (voir la spec QARVIS) :
+#
+# - id: rwa_paiement
+#   url: http://localhost:3000
+#   storage_state: auth.json
+#   story: |
+#     En tant qu'utilisateur connecté,
+#     je veux envoyer de l'argent à un contact,
+#     afin de rembourser une dépense partagée.
+#
+#     Critères d'acceptation :
+#     - la transaction apparaît dans le feed après envoi
+#     - le solde est mis à jour
